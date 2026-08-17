@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Notebook",
+    "quantity": 8,
+    "price": 3499.90
+  },
+  {
+    "name": "Mouse",
+    "quantity": 25,
+    "price": 89.90
+  },
+  {
+    "name": "Teclado",
+    "quantity": 12,
+    "price": 199.90
+  },
+  {
+    "name": "Led",
+    "quantity": 12,
+    "price": 23.90
+  },
+  {
+    "name": "Cabo USB",
+    "quantity": 12,
+    "price": 20.00
+  }
+]

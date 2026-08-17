@@ -1,0 +1,1 @@
+"""Inventory MCP application package."""
