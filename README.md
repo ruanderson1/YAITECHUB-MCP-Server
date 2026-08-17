@@ -66,7 +66,7 @@ As tools não acessam o arquivo diretamente. Elas delegam as regras de negócio 
 
 As tools exigem que `name` seja uma string com conteúdo. Nomes vazios ou formados apenas por espaços são rejeitados antes da consulta. O serviço aplica `strip()` para remover espaços nas extremidades e `casefold()` para comparar nomes sem diferenciação entre maiúsculas e minúsculas.
 
-O Pydantic valida os registros carregados do JSON e os objetos retornados. Um produto deve ter nome não vazio, quantidade inteira não negativa e preço numérico não negativo. Registros inválidos interrompem o carregamento com erro explícito.
+O Pydantic valida os registros carregados do JSON e os modelos de saída. Um produto deve ter nome não vazio, quantidade inteira não negativa e preço numérico não negativo. A rejeição de nomes de consulta vazios é feita por `_validate_product_name()`. Registros inválidos interrompem o carregamento com erro explícito.
 
 ## Tratamento de erros
 
@@ -149,14 +149,63 @@ O cliente aceita outro endpoint por meio de `--url`.
 
 ## Tool Risk Assessment
 
-| Tool | O que acessa | Tipo de operação | Risco | Possível impacto de uso indevido |
+As tools atuais são somente leitura e não podem criar, alterar ou excluir dados. Essa decisão reduz a superfície de risco, mas não elimina possíveis impactos sobre confidencialidade e disponibilidade.
+
+| Tool | Dados acessados | Operação | Risco atual | Possível impacto de uso indevido |
 | --- | --- | --- | --- | --- |
-| `get_product` | Nome, quantidade e preço no inventário local | Leitura | Baixo | Exposição repetida ou não autorizada dos dados disponíveis no arquivo local |
-| `get_stock` | Quantidade em estoque do produto consultado | Leitura | Baixo | Enumeração ou consulta excessiva das quantidades disponíveis |
+| `get_product` | Nome, preço e quantidade | Leitura | Baixo | Exposição ou enumeração de informações do inventário |
+| `get_stock` | Quantidade disponível | Leitura | Baixo | Enumeração de estoque e acompanhamento excessivo da disponibilidade |
 
-As tools atuais não modificam dados. Operações de escrita foram evitadas intencionalmente para manter reduzidos o escopo e a superfície de risco.
+Chamadas em grande volume ainda podem consumir recursos do servidor. Alterações futuras nas tools ou nos dados retornados devem ser acompanhadas de uma nova avaliação de risco.
 
-Uma futura tool como `update_stock` teria risco superior e exigiria controles adicionais, incluindo validação rigorosa, autenticação e autorização, auditoria das alterações e tracing das chamadas.
+### Trust Boundary
+
+Os argumentos recebidos de um cliente MCP são tratados como entrada não confiável.
+
+```text
+MCP Client
+    ↓
+MCP Server
+    ↓
+Tool
+    ↓
+InventoryService
+    ↓
+inventory.json
+```
+
+A validação acontece antes que os argumentos sejam utilizados pela camada de serviço. O servidor não assume que os dados enviados pelo cliente são válidos apenas porque chegaram pelo protocolo MCP. Os registros do `inventory.json` também são tratados como entrada externa e validados pelo Pydantic durante o carregamento.
+
+### MCP Tool Annotations
+
+As tools são classificadas semanticamente de acordo com seu comportamento. As duas operações atuais declaram:
+
+```text
+readOnlyHint=true
+openWorldHint=false
+```
+
+`readOnlyHint=true` informa ao cliente MCP que a operação não pretende modificar estado.
+
+`openWorldHint=false` indica que a tool trabalha sobre um domínio fechado e conhecido — neste caso, o inventário local — em vez de consultar sistemas externos ou fontes abertas.
+
+Essas annotations funcionam como **metadados e hints para clientes MCP**, não como mecanismos de segurança. Um cliente não deve confiar nelas como substituto de validação, autorização ou outros controles reais.
+
+### Risco de tools de escrita
+
+Uma futura operação como:
+
+```text
+update_stock(name, quantity)
+```
+
+teria risco significativamente maior porque modificaria o estado persistente do sistema.
+
+Uma chamada incorreta ou maliciosa poderia alterar o produto errado, registrar valores inválidos ou permitir mudanças não autorizadas. Uma futura tool como `update_stock` exigiria validação rigorosa, autenticação, autorização, auditoria e tracing. Operações destrutivas também exigiriam confirmação ou aprovação quando aplicável.
+
+### Risco por transporte
+
+No `stdio`, o servidor é iniciado localmente como subprocesso do cliente, reduzindo a exposição de rede. No SSE, servidor e cliente são processos separados e a comunicação usa um endpoint HTTP. Uma eventual publicação desse endpoint fora do host local exigiria controles adicionais de acesso e disponibilidade.
 
 ## Testes
 
@@ -167,9 +216,10 @@ A suíte atual valida:
 - rejeição de nomes vazios e valores que não sejam strings;
 - rejeição de registros de inventário inválidos pelo Pydantic;
 - registro das tools no servidor;
-- seleção e configuração dos transportes SSE e `stdio`.
+- seleção e configuração dos transportes SSE e `stdio`;
+- integração real via `stdio`, incluindo `list_tools()`, chamada de `get_stock` e leitura das annotations MCP.
 
-Os cenários incluem produtos existentes e inexistentes, espaços nas extremidades, diferenças entre maiúsculas e minúsculas e entradas inválidas. A suíte também possui um teste de integração ponta a ponta via `stdio`: um cliente FastMCP real inicia o servidor como subprocesso, lista as tools e consulta o estoque carregado do JSON local.
+Os cenários incluem produtos existentes e inexistentes, espaços nas extremidades, diferenças entre maiúsculas e minúsculas e entradas inválidas. No teste ponta a ponta, um cliente FastMCP real inicia o servidor como subprocesso, valida `readOnlyHint` e `openWorldHint`, consulta o estoque carregado do JSON local e encerra a conexão pelo context manager.
 
 ## Qualidade de código
 
@@ -185,7 +235,7 @@ O projeto utiliza type hints, separa responsabilidades entre MCP, serviços, sch
 
 ## Possíveis evoluções
 
-- tracing e logging estruturado;
+- tracing e logging estruturado, mantidos fora do escopo atual para preservar o foco didático do projeto;
 - suporte a Streamable HTTP;
 - persistência em banco de dados;
 - autenticação e autorização;

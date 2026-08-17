@@ -3,6 +3,7 @@
 import argparse
 
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from app.tools.inventory import get_product, get_stock
 
@@ -17,6 +18,7 @@ mcp.tool(
         "Use this tool to retrieve the complete data of a product by name, "
         "including its price and stock quantity."
     ),
+    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
 mcp.tool(
     get_stock,
@@ -24,6 +26,7 @@ mcp.tool(
         "Use this tool to retrieve only the current stock quantity of a product "
         "by name."
     ),
+    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
 
 

@@ -26,9 +26,14 @@ def test_stdio_inventory_flow() -> None:
 
         async with Client(transport) as client:
             tools = await client.list_tools()
-            tool_names = {tool.name for tool in tools}
+            tools_by_name = {tool.name: tool for tool in tools}
 
-            assert {"get_product", "get_stock"} <= tool_names
+            assert {"get_product", "get_stock"} <= tools_by_name.keys()
+            for tool_name in ("get_product", "get_stock"):
+                annotations = tools_by_name[tool_name].annotations
+                assert annotations is not None
+                assert annotations.readOnlyHint is True
+                assert annotations.openWorldHint is False
 
             result = await client.call_tool("get_stock", {"name": product["name"]})
 
